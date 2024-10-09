@@ -1,0 +1,52 @@
+#!/bin/bash
+set -euxo pipefail
+
+echo "Waiting for the Instruqt host bootstrap to finish..."
+until [ -f /opt/instruqt/bootstrap/host-bootstrap-completed ]
+do
+    sleep 1
+done
+
+# install ansible and deps
+sudo apt update -y
+#sudo apt install -y unzip ansible
+sudo apt install -y unzip python3-pip
+snap install yq
+sudo pip install ansible
+
+# Enable rpk
+curl -LO https://github.com/redpanda-data/redpanda/releases/latest/download/rpk-linux-amd64.zip
+mkdir -p ~/.local/bin
+unzip rpk-linux-amd64.zip -d ~/.local/bin/
+export PATH="~/.local/bin:$PATH"
+echo export PATH="~/.local/bin:$PATH" >> ~/.bashrc
+source ~/.bashrc
+
+# generate certs
+IP_A=$(nslookup node-a | grep Address | tail -1 | cut -f2 -d' ')
+IP_B=$(nslookup node-b | grep Address | tail -1 | cut -f2 -d' ')
+IP_C=$(nslookup node-c | grep Address | tail -1 | cut -f2 -d' ')
+curl -sLO https://gist.githubusercontent.com/vuldin/e4b4a776df6dc0b4593302437ea57eed/raw/generate-certs.sh
+chmod +x generate-certs.sh
+ssh -o StrictHostKeyChecking=no node-a mkdir -p /etc/redpanda/certs
+ssh -o StrictHostKeyChecking=no node-b mkdir -p /etc/redpanda/certs
+ssh -o StrictHostKeyChecking=no node-c mkdir -p /etc/redpanda/certs
+#./generate-certs.sh dns=node-a ip=$IP_A
+./generate-certs.sh dns=node-a dns=node-b dns=node-c ip=$IP_A ip=$IP_B ip=$IP_C
+scp -ro StrictHostKeyChecking=no certs node-a:/etc/redpanda/
+#rm -r certs
+#./generate-certs.sh dns=node-b ip=$IP_B
+scp -ro StrictHostKeyChecking=no certs node-b:/etc/redpanda/
+#rm -r certs
+#./generate-certs.sh dns=node-c ip=$IP_C
+scp -ro StrictHostKeyChecking=no certs node-c:/etc/redpanda/
+
+# clone deployment-automation
+git clone https://github.com/redpanda-data/deployment-automation.git
+cd deployment-automation
+git fetch
+git checkout add-rolling-restart
+
+cd ..
+rm -r private-ca-key rpk-linux-amd64.zip
+echo "setup complete"

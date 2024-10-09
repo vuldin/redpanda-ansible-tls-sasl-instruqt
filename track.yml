@@ -1,0 +1,31 @@
+slug: jlp-ansible-test
+id: khzjy0pgypch
+title: jlp ansible test
+teaser: Learn how to manage Redpanda after deploying with Ansible
+description: |-
+  Redpanda is a Kafka-compatible streaming data platform that is less complex and less costly than any other commercial mission-critical event streaming platform. It's fast, it's easy, and it keeps your data safe.
+
+  The Redpanda Ansible playbook allows you to deploy a production-grade Redpanda cluster on bare-metal servers or VMs in a fully repeatable, fully customisable way.
+
+  In this tutorial, you'll learn how to deploy and manage Redpanda using Ansible.
+icon: https://res.cloudinary.com/practicaldev/image/fetch/s--W2NpA-Jj--/c_fill,f_auto,fl_progressive,h_320,q_auto,w_320/https://dev-to-uploads.s3.amazonaws.com/uploads/organization/profile_image/5327/ea54f4c7-abf0-46fc-a971-766b484ab9bd.png
+tags:
+- day2ops
+- ansible
+owner: redpanda
+developers:
+- josh@redpanda.com
+show_timer: true
+timelimit: 59940
+lab_config:
+  overlay: false
+  width: 33
+  position: right
+  feedback_recap_enabled: true
+  loadingMessages: true
+  lab_v2: true
+  override_challenge_layout: false
+  hideStopButton: false
+  default_layout: AssignmentRight
+  default_layout_sidebar_size: 33
+checksum: "9822083356492398002"

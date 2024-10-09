@@ -1,0 +1,81 @@
+#!/bin/bash
+
+set -euxo pipefail
+
+source ~/.bashrc
+
+# deploy redpanda
+cd deployment-automation
+export DEPLOYMENT_PREFIX=instruqt
+export ANSIBLE_COLLECTIONS_PATH=$(realpath .)/artifacts/collections
+export ANSIBLE_ROLES_PATH=$(realpath .)/artifacts/roles
+export ANSIBLE_INVENTORY=$(realpath .)/artifacts/hosts_gcp_$DEPLOYMENT_PREFIX.ini
+ansible-galaxy collection install -r requirements.yml --force -p $ANSIBLE_COLLECTIONS_PATH
+ansible-galaxy role install -r requirements.yml --force -p $ANSIBLE_ROLES_PATH
+IP_A=$(nslookup node-a | grep Address | tail -1 | cut -f2 -d' ')
+IP_B=$(nslookup node-b | grep Address | tail -1 | cut -f2 -d' ')
+IP_C=$(nslookup node-c | grep Address | tail -1 | cut -f2 -d' ')
+cat << EOF > hosts.ini
+[redpanda]
+node-a ansible_user=root ansible_become=True private_ip=${IP_A} id=0
+node-b ansible_user=root ansible_become=True private_ip=${IP_B} id=1
+node-c ansible_user=root ansible_become=True private_ip=${IP_C} id=2
+EOF
+
+cat << EOF > extra-vars.yaml
+redpanda_version: 24.2.6-1
+create_demo_certs: false
+handle_cert_install: false
+redpanda_certs_dir: /etc/redpanda/certs
+redpanda_csr_file: "{{ redpanda_certs_dir }}/node.csr"
+redpanda_key_file: "{{ redpanda_certs_dir }}/node.key"
+redpanda_cert_file: "{{ redpanda_certs_dir }}/node.crt"
+redpanda_truststore_file: "{{ redpanda_certs_dir }}/ca.crt"
+redpanda_broker_no_log: false
+EOF
+
+ansible-playbook --private-key ~/.ssh/id_rsa -v ansible/provision-cluster-tls.yml -i hosts.ini -e "@extra-vars.yaml"
+
+# create mrc-tls rpk profile
+cd ..
+rpk profile create mrc-tls -s brokers=node-a:9092,node-b:9092,node-c:9092 -s admin.hosts=node-a:9644,node-b:9644,node-c:9644 -s tls.ca="$(realpath ./certs/ca.crt)" -s admin.tls.ca="$(realpath ./certs/ca.crt)"
+
+# create topics
+rpk topic create log1 -p 3 -r 3
+
+# enable SASL
+user=admin
+password='password1234'
+rpk cluster config set kafka_enable_authorization true
+rpk security user create $user -p $password --mechanism SCRAM-SHA-256
+rpk cluster config set superusers [$user]
+rpk cluster config set admin_api_require_auth true -X user=$user -X pass=$password
+
+curl -sLO https://gist.githubusercontent.com/vuldin/7e25216324d7295113483b74ad3117b9/raw/enable-sasl.sh
+chmod +x enable-sasl.sh
+./enable-sasl.sh node-a
+./enable-sasl.sh node-b
+./enable-sasl.sh node-c
+cd deployment-automation
+#ansible-playbook --private-key ~/.ssh/id_rsa ansible/operation-rolling-restart.yml -i hosts.ini
+ssh -o StrictHostKeyChecking=no node-a systemctl restart redpanda
+ssh -o StrictHostKeyChecking=no node-b systemctl restart redpanda
+ssh -o StrictHostKeyChecking=no node-c systemctl restart redpanda
+
+# create mrc-tls-sasl-admin rpk profile
+cd ..
+rpk profile create mrc-tls-sasl-admin -s brokers=node-a:9092,node-b:9092,node-c:9092 -s admin.hosts=node-a:9644,node-b:9644,node-c:9644 -s tls.ca="$(realpath ./certs/ca.crt)" -s admin.tls.ca="$(realpath ./certs/ca.crt)" -s kafka_api.sasl.user=admin -s kafka_api.sasl.password=password1234 -s kafka_api.sasl.mechanism=SCRAM-SHA-256
+ssh -o StrictHostKeyChecking=no node-a rpk profile create mrc-tls-sasl-admin -s brokers=node-a:9092,node-b:9092,node-c:9092 -s admin.hosts=node-a:9644,node-b:9644,node-c:9644 -s tls.ca=/etc/redpanda/certs/ca.crt -s admin.tls.ca=/etc/redpanda/certs/ca.crt -s kafka_api.sasl.user=admin -s kafka_api.sasl.password=password1234 -s kafka_api.sasl.mechanism=SCRAM-SHA-256
+ssh -o StrictHostKeyChecking=no node-b rpk profile create mrc-tls-sasl-admin -s brokers=node-a:9092,node-b:9092,node-c:9092 -s admin.hosts=node-a:9644,node-b:9644,node-c:9644 -s tls.ca=/etc/redpanda/certs/ca.crt -s admin.tls.ca=/etc/redpanda/certs/ca.crt -s kafka_api.sasl.user=admin -s kafka_api.sasl.password=password1234 -s kafka_api.sasl.mechanism=SCRAM-SHA-256
+ssh -o StrictHostKeyChecking=no node-c rpk profile create mrc-tls-sasl-admin -s brokers=node-a:9092,node-b:9092,node-c:9092 -s admin.hosts=node-a:9644,node-b:9644,node-c:9644 -s tls.ca=/etc/redpanda/certs/ca.crt -s admin.tls.ca=/etc/redpanda/certs/ca.crt -s kafka_api.sasl.user=admin -s kafka_api.sasl.password=password1234 -s kafka_api.sasl.mechanism=SCRAM-SHA-256
+
+# create remaining topic
+rpk topic create log2 -p 3 -r 3
+rpk topic create log3 -p 3 -r 3
+rpk topic create log4 -p 3 -r 3
+rpk topic create log5 -p 3 -r 3
+
+# get client scripts
+#curl -sLO https://gist.githubusercontent.com/vuldin/ac7b5fe2ea841b1fa162dde86e6dca75/raw/185b56f47804297015c5a2ab8183512ebd7b9673/produce.sh
+#chmod +x produce.sh
+
