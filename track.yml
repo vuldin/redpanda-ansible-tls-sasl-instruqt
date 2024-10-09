@@ -16,7 +16,7 @@ owner: redpanda
 developers:
 - josh@redpanda.com
 show_timer: true
-timelimit: 59940
+timelimit: 10800
 lab_config:
   overlay: false
   width: 33
@@ -28,4 +28,4 @@ lab_config:
   hideStopButton: false
   default_layout: AssignmentRight
   default_layout_sidebar_size: 33
-checksum: "9822083356492398002"
+checksum: "17022746636722905779"
